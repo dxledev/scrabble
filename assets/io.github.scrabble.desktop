@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Scrabble
+Comment=A word game against the computer
+Exec=scrabble
+Icon=io.github.scrabble
+Terminal=false
+Categories=Game;BoardGame;
+Keywords=scrabble;word;tiles;board;
+StartupNotify=true
+StartupWMClass=io.github.scrabble
