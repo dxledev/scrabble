@@ -79,6 +79,7 @@ private:
     void dismiss();
     void fitCard();
     int cardWidth_ = 460;
+    int width_ = 0; ///< Layer width used to size the card, kept so fitCard() works before the first show.
 };
 
 }

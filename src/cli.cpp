@@ -135,7 +135,7 @@ Playing:
   Enter           Play the word          Backspace   Recall the last tile
   Esc / Delete    Recall all tiles       Tab         Shuffle the rack
   Ctrl+E          Exchange tiles         Ctrl+P      Pass
-  Ctrl+H          Hint                   Ctrl+N      New game
+  Ctrl+H          Hint (limited)         Ctrl+N      New game
   Ctrl+I          Statistics             F1          Rules
 )";
 }

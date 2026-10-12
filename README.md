@@ -5,7 +5,7 @@ A portable, standalone Scrabble client written in C++20 and Qt 6. Play a full ga
 - Standard 15 × 15 board, 100 tiles, premium squares, 50-point bingo bonus
 - ENABLE word list embedded in the binary as a compact word graph (about 480 KB, loaded once)
 - Easy, Medium, and Hard computer opponents
-- Hints, tile exchange, pass, undo-by-recall, and a saved game that resumes automatically
+- Limited hints that you earn by playing words, tile exchange, pass, tile recall, and a saved game that resumes automatically
 - Every popup is a modal inside the window over a blurred snapshot of the game; no separate popup windows
 - Vector icons drawn in theme colors; tiles are near-white and tinted by the theme
 - Local statistics per level
@@ -44,7 +44,7 @@ Place tiles in a single row or column so the word connects to the board. The fir
 | Backspace | Recall the last tile |
 | Esc / Delete | Recall all tiles |
 | Tab | Shuffle the rack |
-| Ctrl+H | Hint: place the best play as a preview (press Play to use it) |
+| Ctrl+H | Hint: place the best play as a preview (press Play to use it); costs one hint |
 | Ctrl+E | Exchange tiles (needs 7 or more tiles in the bag) |
 | Ctrl+P | Pass |
 | Ctrl+N | New game, with a level choice |
@@ -53,7 +53,9 @@ Place tiles in a single row or column so the word connects to the board. The fir
 
 Placing a blank opens an in-window letter picker; you can also just type the letter you want. Scoring follows the standard rules: letter and word premiums apply to newly placed tiles only, blanks score zero, each word formed is scored, and using all seven tiles adds 50. The game ends when a rack and the bag are both empty (the player who went out collects the opponent's remaining tile values; each player loses their own), or after six consecutive scoreless turns.
 
-Opponent strength: **Easy** prefers short words from the lower half of its options, **Medium** plays randomly among options scoring at least 60% of the best, and **Hard** plays the highest-scoring option. Start at a level with `scrabble --level hard`; `--seed N` starts a reproducible game.
+Opponent strength: **Easy** prefers short words from the lower half of its options, **Medium** plays randomly among options scoring at least 60% of the best, and **Hard** plays the highest-scoring option. **Hints** are limited. A game starts with 3 on Easy, 2 on Medium, and 1 on Hard, and every 5 (Easy), 6 (Medium), or 7 (Hard) words you play earns one more. The header shows how many you have and how many words remain until the next one. Pressing Hint again while its preview is still on the board is free; recalling the tiles and asking again costs another hint. Each play counts as one word, however many cross words it forms.
+
+Start at a level with `scrabble --level hard`; `--seed N` starts a reproducible game.
 
 The game saves after every turn to `game.json` and resumes on the next launch. Statistics are stored locally in `stats.json`.
 

@@ -5,10 +5,14 @@
 #include "core/game.h"
 #include "core/storage.h"
 #include "core/theme.h"
+#include "ui/board_view.h"
 #include "ui/window.h"
+
+#include <QLabel>
 
 #include <QApplication>
 #include <QImage>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -82,6 +86,58 @@ private slots:
         QCOMPARE(savedGame(config())->log().size(), size_t(2));
     }
 
+    void modalTextIsNeverClipped() {
+        Window window(config(), preset("slate"), std::nullopt, 7);
+        window.resize(1000, 900);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *modal = window.findChild<QWidget *>("modal");
+        for (const auto key : {Qt::Key_F1, Qt::Key_I, Qt::Key_N, Qt::Key_P}) {
+            QTest::keyClick(&window, key, key == Qt::Key_F1 ? Qt::NoModifier : Qt::ControlModifier);
+            QVERIFY(modal->isVisible());
+            int checked = 0;
+            for (auto *label : modal->findChildren<QLabel *>()) {
+                if (!label->wordWrap() || label->text().isEmpty())
+                    continue;
+                const QRect needed = label->fontMetrics().boundingRect(
+                    QRect(0, 0, label->width(), 100000), Qt::TextWordWrap | Qt::AlignLeft, label->text());
+                QVERIFY2(label->height() >= needed.height(), qPrintable(label->text().left(30)));
+                ++checked;
+            }
+            QVERIFY(checked > 0 || key == Qt::Key_I);
+            QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+        }
+    }
+
+    void boardIsCenteredAndNeverSqueezed_data() {
+        QTest::addColumn<int>("width");
+        QTest::addColumn<int>("height");
+        QTest::newRow("minimum") << 620 << 760;
+        QTest::newRow("narrow") << 700 << 900;
+        QTest::newRow("tiled half screen") << 1005 << 1085; // a real compositor-assigned size
+        QTest::newRow("square-ish") << 1000 << 900;
+        QTest::newRow("wide") << 1400 << 900;
+        QTest::newRow("ultrawide") << 2000 << 1100;
+    }
+
+    void boardIsCenteredAndNeverSqueezed() {
+        QFETCH(int, width);
+        QFETCH(int, height);
+        Window window(config(), preset("slate"), std::nullopt, 7);
+        window.resize(width, height);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *board = window.findChild<BoardView *>();
+        const double center = board->mapTo(&window, QPoint(0, 0)).x() + board->boardRect().center().x();
+        QVERIFY2(qAbs(center - window.width() / 2.0) <= 2.0, "board is off-center");
+        // The board must keep the full height the window gives it, never shrink for the side panels.
+        const double side = board->boardRect().width();
+        QVERIFY2(side >= qMin(board->width(), board->height()) - 40, "board was squeezed by a panel");
+        // Whenever the move list is shown, the board must still be at least as wide as it is tall.
+        QTRY_VERIFY_WITH_TIMEOUT(!window.findChild<QWidget *>("sidePanel")->isVisible()
+                                     || board->width() >= board->height() - 2, 2000);
+    }
+
     void tabShufflesWithoutStealingKeyboardFocus() {
         Window window(config(), preset("slate"), std::nullopt, 7);
         window.show();
@@ -98,6 +154,51 @@ private slots:
         const char expected[] = {'G', 'R', 'O', 'U', 'T'};
         for (int row = 0; row < 5; ++row)
             QCOMPARE(cellAt(game.board(), 7 + row, 7).letter, expected[row]);
+    }
+
+    void hintsStartByLevelAndSpendOncePerPreview_data() {
+        QTest::addColumn<QString>("level");
+        QTest::addColumn<int>("start");
+        QTest::newRow("easy") << "easy" << 3;
+        QTest::newRow("medium") << "medium" << 2;
+        QTest::newRow("hard") << "hard" << 1;
+    }
+
+    void hintsStartByLevelAndSpendOncePerPreview() {
+        QFETCH(QString, level);
+        QFETCH(int, start);
+        Window window(config(), preset("slate"), level, 7);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const auto hintsLeft = [&] { return readJson(config() + "/game.json").value("hints_left").toInt(-1); };
+        QCOMPARE(hintsLeft(), start);
+        QTest::keyClick(&window, Qt::Key_H, Qt::ControlModifier);
+        QCOMPARE(hintsLeft(), start - 1);
+        QTest::keyClick(&window, Qt::Key_H, Qt::ControlModifier); // same preview: free
+        QCOMPARE(hintsLeft(), start - 1);
+        // Recall and ask again until the allowance runs out; a spent bank refuses without charging.
+        for (int left = start - 1; left > 0; --left) {
+            QTest::keyClick(&window, Qt::Key_Escape);
+            QTest::keyClick(&window, Qt::Key_H, Qt::ControlModifier);
+            QCOMPARE(hintsLeft(), left - 1);
+        }
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QTest::keyClick(&window, Qt::Key_H, Qt::ControlModifier);
+        QCOMPARE(hintsLeft(), 0);
+    }
+
+    void playingTheFinalWordOfARunEarnsAHint() {
+        QJsonObject save{{"version", 1}, {"level", "easy"}, {"best_play", 0}, {"hints", 0}, {"stats_recorded", false},
+                         {"hints_left", 0}, {"hint_progress", 4}, {"game", Game(7).toJson()}};
+        writeJson(config() + "/game.json", save);
+        Window window(config(), preset("slate"), std::nullopt, std::nullopt);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        for (const char letter : QByteArray("GROUT"))
+            QTest::keyClick(&window, Qt::Key(Qt::Key_A + letter - 'A'));
+        QTest::keyClick(&window, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(readJson(config() + "/game.json").value("hints_left").toInt(-1), 1, 3000);
+        QCOMPARE(readJson(config() + "/game.json").value("hint_progress").toInt(-1), 0);
     }
 
     void invalidWordIsRejectedAndKeptPending() {
@@ -133,5 +234,12 @@ private slots:
     }
 };
 
-QTEST_MAIN(WindowTests)
+// A fractional display scale exercises text measurement that integer scales hide.
+int main(int argc, char **argv) {
+    if (qEnvironmentVariableIsEmpty("QT_SCALE_FACTOR"))
+        qputenv("QT_SCALE_FACTOR", "1.5");
+    QApplication app(argc, argv);
+    WindowTests tests;
+    return QTest::qExec(&tests, argc, argv);
+}
 #include "window_tests.moc"

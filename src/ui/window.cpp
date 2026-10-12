@@ -33,7 +33,9 @@
 namespace scrabble {
 namespace {
 
-constexpr int kSideThreshold = 980; ///< Window width above which the move list is shown.
+constexpr int kSideWidth = 230;  ///< Width of the move list and of its balancing twin.
+constexpr int kGap = 14;         ///< Space between the board and each side panel.
+constexpr int kMargins = 36;     ///< Left and right window margins together.
 
 QString mixed(const QColor &base, const QColor &tint, double amount) {
     return QColor::fromRgbF(base.redF() * (1 - amount) + tint.redF() * amount,
@@ -108,10 +110,15 @@ Window::Window(const QString &configDirectory, const Theme &theme, std::optional
     computerTimer_.setSingleShot(true);
     connect(&computerTimer_, &QTimer::timeout, this, &Window::computerMove);
 
+    // A level given on the command line applies to a new game and takes over a resumed one.
+    if (level)
+        level_ = parseLevel(level->toStdString());
     if (seed || !loadSavedGame())
         startGame(seed);
     if (level) {
         level_ = parseLevel(level->toStdString());
+        hintBank_ = HintBank::restore(hintBank_.available(), std::min(hintBank_.progress(), HintBank::wordsPerHint(level_) - 1), level_)
+                        .value_or(HintBank(level_));
         saveGame();
     }
     applyTheme();
@@ -155,12 +162,16 @@ void Window::buildUi() {
 
     auto *body = new QHBoxLayout;
     body->setSpacing(14);
+    // An empty twin of the move list on the left keeps the board centered in the window.
+    balance_ = new QWidget;
+    balance_->setFixedWidth(kSideWidth);
+    body->addWidget(balance_);
     board_ = new BoardView;
     board_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     body->addWidget(board_, 1);
     side_ = new QFrame;
     side_->setObjectName("sidePanel");
-    side_->setFixedWidth(230);
+    side_->setFixedWidth(kSideWidth);
     auto *sideLayout = new QVBoxLayout(side_);
     sideLayout->setContentsMargins(14, 12, 14, 12);
     auto *sideTitle = new QLabel("Moves");
@@ -349,7 +360,10 @@ void Window::paintEvent(QPaintEvent *) {
 void Window::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
     modal_->setGeometry(rect());
-    side_->setVisible(width() >= kSideThreshold);
+    if (!panelsQueued_) {
+        panelsQueued_ = true;
+        QMetaObject::invokeMethod(this, &Window::updatePanels, Qt::QueuedConnection);
+    }
 }
 
 bool Window::focusNextPrevChild(bool next) {
@@ -363,6 +377,17 @@ bool Window::focusNextPrevChild(bool next) {
 void Window::closeEvent(QCloseEvent *event) {
     saveGame();
     QWidget::closeEvent(event);
+}
+
+void Window::updatePanels() {
+    panelsQueued_ = false;
+    // The panels appear only when the board keeps its full height; otherwise they would shrink it.
+    // The board's height does not depend on the panels, so this cannot flip back and forth. It is read
+    // after the layout has settled, because the first resize reports the pre-layout size.
+    layout()->activate();
+    const bool room = width() - kMargins - 2 * (kSideWidth + kGap) >= board_->height();
+    side_->setVisible(room);
+    balance_->setVisible(room);
 }
 
 bool Window::humanTurn() const {
@@ -379,7 +404,9 @@ void Window::startGame(std::optional<std::uint32_t> seed) {
     horizontal_ = true;
     statsRecorded_ = false;
     bestPlay_ = 0;
-    hints_ = 0;
+    hintsUsed_ = 0;
+    hintBank_ = HintBank(level_);
+    hintShown_.clear();
     game_ = std::make_unique<Game>(seed ? *seed : QRandomGenerator::global()->generate());
     order_.assign(game_->rack(Game::kHuman).size(), 0);
     std::iota(order_.begin(), order_.end(), 0);
@@ -398,7 +425,11 @@ bool Window::loadSavedGame() {
         game_ = std::make_unique<Game>(std::move(*restored));
         level_ = parseLevel(data.value("level").toString().toStdString());
         bestPlay_ = std::max(0, data.value("best_play").toInt());
-        hints_ = std::max(0, data.value("hints").toInt());
+        hintsUsed_ = std::max(0, data.value("hints").toInt());
+        // Games saved before hints were limited start with the level's allowance.
+        hintBank_ = HintBank::restore(data.value("hints_left").toInt(-1), data.value("hint_progress").toInt(0), level_)
+                        .value_or(HintBank(level_));
+        hintShown_.clear();
         statsRecorded_ = data.value("stats_recorded").toBool();
         order_.assign(game_->rack(Game::kHuman).size(), 0);
         std::iota(order_.begin(), order_.end(), 0);
@@ -414,7 +445,9 @@ void Window::saveGame() {
         return;
     try {
         writeJson(gamePath_, {{"version", 1}, {"level", levelName(level_)}, {"best_play", bestPlay_},
-                              {"hints", hints_}, {"stats_recorded", statsRecorded_}, {"game", game_->toJson()}},
+                              {"hints", hintsUsed_}, {"hints_left", hintBank_.available()},
+                              {"hint_progress", hintBank_.progress()}, {"stats_recorded", statsRecorded_},
+                              {"game", game_->toJson()}},
                   QJsonDocument::Compact);
     } catch (const std::exception &) {
         setStatus("The game could not be saved.", true);
@@ -493,7 +526,10 @@ void Window::refresh() {
         card->style()->unpolish(card);
         card->style()->polish(card);
     }
-    bag_->setText(QString("BAG %1  ·  %2").arg(game_->bagSize()).arg(QString(levelName(level_)).toUpper()));
+    bag_->setText(QString("BAG %1  ·  %2  ·  HINTS %3  ·  NEXT IN %4")
+                      .arg(game_->bagSize()).arg(QString(levelName(level_)).toUpper())
+                      .arg(hintBank_.available()).arg(hintBank_.wordsUntilNext(level_)));
+    hint_->setText(QString("Hint (%1)").arg(hintBank_.available()));
     statusLabel_->setText(status_);
 
     QStringList lines;
@@ -694,7 +730,12 @@ void Window::submitPlay() {
         return;
     }
     bestPlay_ = std::max(bestPlay_, evaluation.move.score);
-    setStatus(QString("You played %1 for %2.").arg(QString::fromStdString(evaluation.move.words.front())).arg(evaluation.move.score));
+    QString message = QString("You played %1 for %2.").arg(QString::fromStdString(evaluation.move.words.front())).arg(evaluation.move.score);
+    hintEarned_ = hintBank_.recordWord(level_);
+    if (hintEarned_)
+        message += " You earned a hint!";
+    setStatus(message);
+    hintShown_.clear();
     pending_.clear();
     selectedRack_ = -1;
     afterTurn();
@@ -703,6 +744,20 @@ void Window::submitPlay() {
 void Window::doHint() {
     if (!humanTurn())
         return;
+    // Pressing Hint again while its preview is still on the board does not cost another hint.
+    const auto shown = pendingPlacements();
+    if (!hintShown_.empty() && shown.size() == hintShown_.size()
+        && std::is_permutation(shown.begin(), shown.end(), hintShown_.begin())) {
+        setStatus("That hint is on the board. Press Play to use it.");
+        refresh();
+        return;
+    }
+    if (hintBank_.available() <= 0) {
+        const int needed = hintBank_.wordsUntilNext(level_);
+        setStatus(QString("No hints left. Play %1 more word%2 to earn one.").arg(needed).arg(needed == 1 ? "" : "s"), true);
+        refresh();
+        return;
+    }
     recallAll();
     const auto best = chooseMove(game_->board(), game_->rack(Game::kHuman), Dawg::english(), Level::Hard, random_);
     if (!best) {
@@ -721,8 +776,11 @@ void Window::doHint() {
             }
         }
     }
-    ++hints_;
+    hintBank_.spend();
+    ++hintsUsed_;
+    hintShown_ = pendingPlacements();
     setStatus(QString("Hint: %1 for %2. Press Play to use it.").arg(QString::fromStdString(best->words.front())).arg(best->score));
+    saveGame();
     refresh();
 }
 
@@ -759,7 +817,7 @@ void Window::afterTurn() {
 
 void Window::startComputerTurn() {
     busy_ = true;
-    setStatus("The computer is thinking…");
+    setStatus(hintEarned_ ? "You earned a hint! The computer is thinking…" : "The computer is thinking…");
     refresh();
     computerTimer_.start(700);
 }
@@ -778,6 +836,9 @@ void Window::computerMove() {
         game_->pass();
         setStatus("The computer passed.");
     }
+    if (hintEarned_)
+        setStatus(status_ + " You earned a hint!");
+    hintEarned_ = false;
     afterTurn();
 }
 

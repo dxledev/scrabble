@@ -115,11 +115,32 @@ QList<QAbstractButton *> Modal::addButtons(const QStringList &labels, int primar
 }
 
 void Modal::fitCard() {
-    card_->setFixedWidth(std::min(cardWidth_, std::max(0, width() - 48)));
+    // Wrapped text is measured with the polished font. heightForWidth() under-reports at fractional
+    // display scales, which clipped long paragraphs, so every wrapped label gets an explicit height.
+    if (!cardLayout_)
+        return; // no dialog has been built yet
+    const int width = std::min(cardWidth_, std::max(0, width_ - 48));
+    card_->setFixedWidth(width);
+    const auto margins = cardLayout_->contentsMargins();
+    const int textWidth = std::max(1, width - margins.left() - margins.right());
+    for (auto *label : card_->findChildren<QLabel *>()) {
+        if (!label->wordWrap())
+            continue;
+        label->ensurePolished();
+        const QRect needed = label->fontMetrics().boundingRect(QRect(0, 0, textWidth, 100000),
+                                                               Qt::TextWordWrap | Qt::AlignLeft, label->text());
+        label->setFixedHeight(needed.height() + 4);
+    }
+    cardLayout_->activate();
+    card_->setFixedHeight(cardLayout_->sizeHint().height());
     layout()->activate();
 }
 
 void Modal::display(QAbstractButton *focus) {
+    card_->ensurePolished();
+    for (auto *child : card_->findChildren<QWidget *>())
+        child->ensurePolished();
+    width_ = width();
     fitCard();
     show();
     raise();
@@ -131,6 +152,7 @@ void Modal::display(QAbstractButton *focus) {
         style()->unpolish(button);
         style()->polish(button);
     }
+    fitCard();
 }
 
 void Modal::dismiss() {
@@ -317,7 +339,9 @@ void Modal::showRules() {
         "Enter plays the word; Backspace recalls the last tile.\n\n"
         "2L / 3L multiply a tile, 2W / 3W multiply a word. Blank tiles score nothing. "
         "Using all seven tiles earns 50 bonus points. The game ends when a rack and the bag are empty "
-        "or after six scoreless turns.");
+        "or after six scoreless turns.\n\n"
+        "Hints: you start with 3 on Easy, 2 on Medium, and 1 on Hard, and earn one more every "
+        "5, 6, or 7 words you play.");
     text->setObjectName("modalBody");
     text->setWordWrap(true);
     cardLayout_->addWidget(text);
@@ -358,6 +382,7 @@ bool Modal::focusNextPrevChild(bool next) {
 
 void Modal::resizeEvent(QResizeEvent *event) {
     ModalBackdrop::resizeEvent(event);
+    width_ = width();
     fitCard();
 }
 

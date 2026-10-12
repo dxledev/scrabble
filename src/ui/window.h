@@ -2,6 +2,7 @@
 
 #include "core/ai.h"
 #include "core/game.h"
+#include "core/hints.h"
 #include "core/statistics.h"
 #include "core/theme.h"
 #include "theme_watcher.h"
@@ -63,7 +64,10 @@ private:
     std::mt19937 random_;
     bool statsRecorded_ = false;
     int bestPlay_ = 0;
-    int hints_ = 0;
+    HintBank hintBank_{Level::Medium};
+    int hintsUsed_ = 0;
+    bool hintEarned_ = false; ///< The last play earned a hint; the notice is kept through the computer's reply.
+    std::vector<Placement> hintShown_; ///< The play currently previewed by a hint, so pressing Hint again is free.
 
     std::vector<PendingTile> pending_;
     std::vector<int> order_; ///< Display order of rack slots (shuffle is cosmetic).
@@ -78,9 +82,11 @@ private:
     QString status_;
     bool statusIsError_ = false;
     bool themeErrorShown_ = false;
+    bool panelsQueued_ = false;
     QTimer computerTimer_;
 
     QWidget *content_ = nullptr;
+    QWidget *balance_ = nullptr;
     BoardView *board_ = nullptr;
     RackView *rack_ = nullptr;
     Modal *modal_ = nullptr;
@@ -91,6 +97,7 @@ private:
 
     void buildUi();
     void applyTheme();
+    void updatePanels();
     void themeChanged();
     void startGame(std::optional<std::uint32_t> seed);
     bool loadSavedGame();

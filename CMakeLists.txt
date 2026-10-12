@@ -23,6 +23,7 @@ add_library(scrabble_core
     src/core/dawg_builder.cpp
     src/core/game.cpp
     src/core/ai.cpp
+    src/core/hints.cpp
     src/core/storage.cpp
     src/core/statistics.cpp
     src/core/theme.cpp
@@ -58,7 +59,7 @@ endforeach()
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
-    foreach(name dawg game ai theme widgets window)
+    foreach(name dawg game ai hints theme widgets window)
         add_executable(${name}_tests tests/${name}_tests.cpp)
         target_link_libraries(${name}_tests PRIVATE scrabble_ui Qt6::Test)
         add_test(NAME ${name} COMMAND ${name}_tests)
