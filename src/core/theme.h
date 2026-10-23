@@ -53,13 +53,6 @@ QString themeLockPath(const QString &outputPath);
 Theme ensureTheme(const QString &path);
 /** @brief Apply key=value assignments; accepts COLOR=#RRGGBB and opacity=0..1 or N%. */
 Theme setColors(Theme theme, const QStringList &assignments);
-/**
- * @brief Write icon.svg into @p directory with the theme's colors (atomic, best effort, never throws).
- *
- * The launcher icon follows the theme the same way the window does: tile faces use "tile",
- * letters "tile_text", the plate "surface_alt", and the highlighted tile "accent".
- */
-void writeThemedIcon(const QString &directory, const Theme &theme);
 /** @brief Round-trip through the file format so every channel is 8-bit exact. */
 Theme normalized(const Theme &theme);
 

@@ -129,20 +129,9 @@ replace_icon() {
     /usr/bin/mv -T -- "$temporary" "$destination"
 }
 
-# The launcher icon lives beside theme.json; the game recolors it whenever the theme changes.
-ensure_launcher_icon() {
-    local destination="$config_directory/icon.svg" temporary
-    [[ ! -L "$destination" ]] || fail "Refusing to replace a symlinked icon: $destination"
-    [[ ! -e "$destination" ]] || return 0
-    /usr/bin/mkdir -p -- "${destination%/*}"
-    temporary="$(/usr/bin/mktemp "${destination%/*}/.scrabble-icon.XXXXXX")"
-    /usr/bin/install -m644 -- "$project_directory/assets/$desktop_id.svg" "$temporary"
-    /usr/bin/mv -T -- "$temporary" "$destination"
-}
-
 register_app() {
     (( use_apps_list )) || return 0
-    local launcher_icon="$config_directory/icon.svg"
+    local launcher_icon="$icon_file"
     local entry="$desktop_id.desktop|$launcher_icon|Scrabble"
     local temporary
     /usr/bin/mkdir -p -- "${apps_list%/*}"
@@ -174,8 +163,8 @@ main() {
     local registered="$install_prefix/share/applications/$desktop_id.desktop"
     local icon="$icon_file"
     if (( dry_run )); then
-        printf 'Install executable: %s/bin/scrabble\nDesktop entry: %s\nRegister desktop: %s\nIcon: %s\nLauncher icon: %s/icon.svg\nApp list: %s\n' \
-            "$install_prefix" "$desktop" "$registered" "$icon" "$config_directory" "$apps_list"
+        printf 'Install executable: %s/bin/scrabble\nDesktop entry: %s\nRegister desktop: %s\nIcon: %s\nApp list: %s\n' \
+            "$install_prefix" "$desktop" "$registered" "$icon" "$apps_list"
         (( use_apps_list )) || printf 'App list: disabled\n'
         if (( follow_theme )) && [[ -e "$selector" ]]; then
             printf 'Follow theme selector: %s\nSave theme: %s/theme.json\n' "$selector" "$config_directory"
@@ -186,7 +175,6 @@ main() {
     replace_icon
     replace_desktop
     configure_theme
-    ensure_launcher_icon
     register_app
     printf 'Installed Scrabble.\n'
 }

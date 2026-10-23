@@ -75,8 +75,7 @@ assert_file "$prefix/share/icons/hicolor/scalable/apps/io.github.scrabble.svg"
 [[ -L "$prefix/share/applications/io.github.scrabble.desktop" ]] || fail 'Desktop registration is not a symlink'
 assert_contains "$prefix/bin/applications/io.github.scrabble.desktop" 'Name=Scrabble'
 assert_contains "$prefix/bin/applications/io.github.scrabble.desktop" "Exec=\"$prefix/bin/scrabble\" --config-dir \"$config_directory\""
-assert_contains "$apps_list" "io.github.scrabble.desktop|$config_directory/icon.svg|Scrabble"
-assert_file "$config_directory/icon.svg"
+assert_contains "$apps_list" "io.github.scrabble.desktop|$prefix/share/icons/hicolor/scalable/apps/io.github.scrabble.svg|Scrabble"
 assert_contains "$apps_list" 'other.desktop|/icons/other.svg|Other'
 assert_contains "$log" "theme follow desktop $selector --dry-run"
 assert_contains "$log" "theme follow desktop $selector"

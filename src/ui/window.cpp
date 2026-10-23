@@ -341,7 +341,6 @@ void Window::applyTheme() {
     board_->setTheme(theme_);
     rack_->setTheme(theme_);
     modal_->setTheme(theme_);
-    writeThemedIcon(QFileInfo(gamePath_).absolutePath(), theme_);
     update();
 }
 

@@ -128,23 +128,6 @@ private slots:
         QVERIFY(mapped.color("tile").red() != 255 || mapped.color("tile").green() != 255); // tinted, not pure white
     }
 
-    void savingAThemeRecolorsTheLauncherIcon() {
-        QTemporaryDir dir;
-        saveTheme(dir.filePath("theme.json"), preset("paper"));
-        QFile icon(dir.filePath("icon.svg"));
-        QVERIFY(icon.open(QIODevice::ReadOnly));
-        auto svg = QString::fromUtf8(icon.readAll());
-        QVERIFY(svg.contains(preset("paper").hex("tile")));
-        QVERIFY(svg.contains(preset("paper").hex("accent")));
-        QVERIFY(!svg.contains("Gradient", Qt::CaseInsensitive));
-        icon.close();
-        saveTheme(dir.filePath("theme.json"), preset("slate"));
-        QVERIFY(icon.open(QIODevice::ReadOnly));
-        svg = QString::fromUtf8(icon.readAll());
-        QVERIFY(svg.contains(preset("slate").hex("tile")));
-        QVERIFY(!svg.contains(preset("paper").hex("accent")));
-    }
-
     void setColorsAcceptsOpacity() {
         auto theme = setColors(preset("slate"), {"opacity=0.5", "accent=#ff0000"});
         QCOMPARE(theme.backgroundAlpha, 128);

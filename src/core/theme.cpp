@@ -194,31 +194,6 @@ Theme loadTheme(const QString &path) {
 void saveTheme(const QString &path, const Theme &theme) {
     const auto validated = normalized(theme);
     writeJson(path, validated.toJson());
-    writeThemedIcon(QFileInfo(path).absolutePath(), validated);
-}
-
-void writeThemedIcon(const QString &directory, const Theme &theme) {
-    const QString stroke = QStringLiteral(
-        "fill=\"none\" stroke=\"%1\" stroke-width=\"5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"");
-    const QString svg = QString(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 128 128\">\n"
-        "  <rect width=\"128\" height=\"128\" rx=\"28\" fill=\"%1\"/>\n"
-        "  <rect x=\"14\" y=\"14\" width=\"46\" height=\"46\" rx=\"9\" fill=\"%2\"/>\n"
-        "  <rect x=\"68\" y=\"14\" width=\"46\" height=\"46\" rx=\"9\" fill=\"%2\"/>\n"
-        "  <rect x=\"68\" y=\"68\" width=\"46\" height=\"46\" rx=\"9\" fill=\"%2\"/>\n"
-        "  <rect x=\"14\" y=\"68\" width=\"46\" height=\"46\" rx=\"9\" fill=\"%3\"/>\n"
-        "  <path d=\"M26 46 L26 30 L37 46 L37 30 M48 30 L48 46\" %4/>\n"
-        "  <circle cx=\"91\" cy=\"37\" r=\"12\" %4/>\n"
-        "  <path d=\"M82 100 L91 80 L100 100 M85 94 L97 94\" %4/>\n"
-        "  <rect x=\"26\" y=\"80\" width=\"22\" height=\"22\" rx=\"4\" %5/>\n"
-        "</svg>\n")
-        .arg(theme.hex("surface_alt"), theme.hex("tile"), theme.hex("accent"), stroke.arg(theme.hex("tile_text")),
-             stroke.arg(theme.hex("accent_text")));
-    QSaveFile file(directory + "/icon.svg");
-    if (!QDir().mkpath(directory) || !file.open(QIODevice::WriteOnly))
-        return;
-    file.write(svg.toUtf8());
-    file.commit();
 }
 
 QString themeLockPath(const QString &outputPath) {

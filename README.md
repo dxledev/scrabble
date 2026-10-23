@@ -105,7 +105,7 @@ scripts/install-desktop.sh                    # install
 scripts/install-desktop.sh --follow ~/.config/themes/current   # also follow a theme folder
 ```
 
-The script installs `~/.local/bin/scrabble`, the icon, and a `Scrabble` desktop entry under `~/.local/bin/applications` (linked into `~/.local/share/applications`), and adds a `Scrabble` line to `~/.config/apps.list`. The launcher icon is `icon.svg` in the configuration directory; it is redrawn in the theme colors whenever the theme changes. Options: `--prefix`, `--config-dir`, `--apps-list FILE` or `--no-apps-list`, and `--follow PATH` or `--no-follow`. Existing files are backed up before they are replaced.
+The script installs `~/.local/bin/scrabble`, the icon, and a `Scrabble` desktop entry under `~/.local/bin/applications` (linked into `~/.local/share/applications`), and adds a `Scrabble` line to `~/.config/apps.list`. Options: `--prefix`, `--config-dir`, `--apps-list FILE` or `--no-apps-list`, and `--follow PATH` or `--no-follow`. Existing files are backed up before they are replaced.
 
 ## Memory and design
 
