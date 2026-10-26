@@ -6,9 +6,11 @@
 #include "core/storage.h"
 #include "core/theme.h"
 #include "ui/board_view.h"
+#include "ui/modal_backdrop.h"
 #include "ui/window.h"
 
 #include <QLabel>
+#include <QPushButton>
 
 #include <QApplication>
 #include <QImage>
@@ -53,7 +55,9 @@ private slots:
         for (const auto key : {Qt::Key_F1}) {
             QTest::keyClick(&window, key);
             QCOMPARE(topLevelCount(), 1);
-            QTest::keyClick(&window, Qt::Key_Escape);
+            auto *rules = window.findChild<QWidget *>("modal");
+            QTest::keyClick(rules, Qt::Key_Escape);
+            QTRY_VERIFY(!rules->isVisible());
         }
         for (const auto &chord : {Qt::Key_N, Qt::Key_I, Qt::Key_P, Qt::Key_E}) {
             QTest::keyClick(&window, chord, Qt::ControlModifier);
@@ -61,7 +65,7 @@ private slots:
             auto *modal = window.findChild<QWidget *>("modal");
             QVERIFY(modal && modal->isVisible());
             QTest::keyClick(modal, Qt::Key_Escape);
-            QVERIFY(!modal->isVisible());
+            QTRY_VERIFY(!modal->isVisible());
         }
     }
 
@@ -106,7 +110,85 @@ private slots:
             }
             QVERIFY(checked > 0 || key == Qt::Key_I);
             QTest::keyClick(QApplication::focusWidget(), Qt::Key_Escape);
+            QTRY_VERIFY(!modal->isVisible());
         }
+    }
+
+    void modalFadesInAndOutWithoutFlashing() {
+        Window window(config(), preset("slate"), std::nullopt, 7);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *modal = window.findChild<ModalBackdrop *>("modal");
+        QTest::keyClick(&window, Qt::Key_F1);
+        QVERIFY(modal->isVisible());
+        // The first frame is fully transparent, so the live window shows through unchanged.
+        QVERIFY(modal->progress() < 1);
+        QTRY_COMPARE(modal->progress(), 1.0);
+        QTest::keyClick(modal, Qt::Key_Escape);
+        QVERIFY(modal->isVisible()); // still fading out
+        QTRY_VERIFY(!modal->isVisible());
+        QCOMPARE(modal->progress(), 0.0);
+    }
+
+    void modalButtonCloseAnimates() {
+        Window window(config(), preset("slate"), std::nullopt, 7);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *modal = window.findChild<ModalBackdrop *>("modal");
+        for (const auto key : {Qt::Key_F1, Qt::Key_I}) {
+            QTest::keyClick(&window, key, key == Qt::Key_F1 ? Qt::NoModifier : Qt::ControlModifier);
+            QTRY_COMPARE(modal->progress(), 1.0);
+            QList<qreal> seen;
+            QObject::connect(modal, &ModalBackdrop::progressChanged, modal, [&](qreal p) { seen.append(p); });
+            auto buttons = modal->findChildren<QPushButton *>();
+            QVERIFY(!buttons.isEmpty());
+            buttons.last()->click();
+            QVERIFY(modal->isVisible());
+            QTRY_VERIFY(!modal->isVisible());
+            QVERIFY2(seen.size() > 2, qPrintable(QString::number(seen.size())));
+            modal->disconnect(modal, &ModalBackdrop::progressChanged, nullptr, nullptr);
+        }
+    }
+
+    void modalEntryAndExitNeverJumpVisually() {
+        Window window(config(), preset("slate"), std::nullopt, 7);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *modal = window.findChild<ModalBackdrop *>("modal");
+        auto difference = [](const QImage &a, const QImage &b) {
+            long long total = 0;
+            for (int y = 0; y < a.height(); ++y)
+                for (int x = 0; x < a.width(); ++x)
+                    total += qAbs(qGray(a.pixel(x, y)) - qGray(b.pixel(x, y)));
+            return total / double(a.width() * a.height());
+        };
+        window.setFocus();
+        QTest::qWait(100); // let queued layout and panel updates settle
+        const QImage before = window.grab().toImage();
+        QList<double> frames;
+        QObject::connect(modal, &ModalBackdrop::progressChanged, modal, [&] {
+            frames.append(difference(before, window.grab().toImage()));
+        });
+        QTest::keyClick(&window, Qt::Key_F1);
+        // The frame right after opening is identical to the window beneath.
+        const double first = difference(before, window.grab().toImage());
+        QVERIFY(first < 0.5);
+        QTRY_COMPARE(modal->progress(), 1.0);
+        const int opened = frames.size();
+        QVERIFY(opened > 1);
+        for (int i = 1; i < opened; ++i)
+            QVERIFY2(frames[i] >= frames[i - 1] - 0.5, "opening must only move away from the window");
+        const double full = frames.last();
+        QVERIFY(full > 1);
+        for (int i = 1; i < opened; ++i)
+            QVERIFY2(frames[i] - frames[i - 1] < full * 0.85, "no single-frame jump while opening");
+        QTest::keyClick(modal, Qt::Key_Escape);
+        QTRY_VERIFY(!modal->isVisible());
+        QVERIFY2(frames.size() - opened > 2, qPrintable(QString::number(frames.size() - opened)));
+        for (int i = opened + 1; i < frames.size(); ++i)
+            QVERIFY2(frames[i] <= frames[i - 1] + 0.5, "closing must only move back to the window");
+        QVERIFY(frames.last() < full * 0.85);
+        QVERIFY(difference(before, window.grab().toImage()) < 1.0);
     }
 
     void boardIsCenteredAndNeverSqueezed_data() {

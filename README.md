@@ -7,6 +7,7 @@ A portable, standalone Scrabble client written in C++20 and Qt 6. Play a full ga
 - Easy, Medium, and Hard computer opponents
 - Limited hints that you earn by playing words, tile exchange, pass, tile recall, and a saved game that resumes automatically
 - Every popup is a modal inside the window over a blurred snapshot of the game; no separate popup windows
+- Modals fade and settle in over 120 ms and fade back out on close; the window beneath is never repainted or covered abruptly. Set `SCRABBLE_REDUCED_MOTION=1` to make the transitions instant
 - Vector icons drawn in theme colors; tiles are near-white and tinted by the theme
 - Local statistics per level
 

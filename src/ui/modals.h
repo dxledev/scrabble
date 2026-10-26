@@ -5,9 +5,14 @@
 #include "modal_backdrop.h"
 
 #include <QAbstractButton>
+#include <functional>
 #include <vector>
 
 class QVBoxLayout;
+
+namespace scrabble {
+class ModalMotion;
+}
 
 namespace scrabble {
 
@@ -77,7 +82,12 @@ private:
     QList<QAbstractButton *> addButtons(const QStringList &labels, int primaryIndex);
     void display(QAbstractButton *focus);
     void dismiss();
+    /** @brief Fade out, then hide and run @p result. Ignored while already closing. */
+    void finish(std::function<void()> result);
     void fitCard();
+    ModalMotion *motion_ = nullptr; ///< Drives the current card and the backdrop together.
+    bool closing_ = false;
+    std::function<void()> pending_;
     int cardWidth_ = 460;
     int width_ = 0; ///< Layer width used to size the card, kept so fitCard() works before the first show.
 };

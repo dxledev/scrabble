@@ -80,8 +80,20 @@ void ModalBackdrop::setTint(const QColor &color) {
     update();
 }
 
+void ModalBackdrop::setProgress(qreal progress) {
+    if (progress_ == progress)
+        return;
+    progress_ = progress;
+    update();
+    emit progressChanged(progress);
+}
+
 void ModalBackdrop::paintEvent(QPaintEvent *) {
+    // At zero nothing is drawn, so the live window shows through unchanged: no flash on entry or exit.
+    if (progress_ <= 0 || snapshot_.isNull())
+        return;
     QPainter painter(this);
+    painter.setOpacity(progress_);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
     painter.drawPixmap(rect(), snapshot_);
     painter.fillRect(rect(), tint_);
@@ -100,7 +112,8 @@ void ModalBackdrop::captureBackground() {
 
 void ModalBackdrop::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
-    captureBackground();
+    if (snapshot_.isNull())
+        captureBackground();
 }
 
 void ModalBackdrop::hideEvent(QHideEvent *event) {

@@ -43,6 +43,7 @@ add_library(scrabble_ui
     src/ui/board_view.cpp
     src/ui/rack_view.cpp
     src/ui/modal_backdrop.cpp
+    src/ui/modal_motion.cpp
     src/ui/modals.cpp
     src/ui/theme_watcher.cpp
     src/ui/window.cpp

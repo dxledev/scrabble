@@ -6,6 +6,7 @@
  * is rebuilt for each request; no native popup, dialog, tooltip, or menu surface is created.
  */
 #include "modals.h"
+#include "modal_motion.h"
 #include "tile_painter.h"
 
 #include <QFrame>
@@ -19,6 +20,7 @@
 #include <QStyle>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <utility>
 
 namespace scrabble {
 
@@ -71,6 +73,13 @@ void Modal::setTheme(const Theme &theme) {
 }
 
 QVBoxLayout *Modal::beginCard(const QString &title, int width) {
+    if (closing_) {
+        // A new request interrupts a fade-out; the close still reports its result exactly once.
+        closing_ = false;
+        hide();
+        if (auto result = std::exchange(pending_, nullptr))
+            result();
+    }
     auto *old = card_;
     auto *card = new QFrame(this);
     card->setObjectName("modalCard");
@@ -78,6 +87,23 @@ QVBoxLayout *Modal::beginCard(const QString &title, int width) {
     layout()->removeWidget(old);
     old->deleteLater();
     old->hide();
+    if (motion_) {
+        motion_->disconnect(this);
+        motion_->stop();
+    }
+    // A card swapped in while the layer is already up starts fully shown instead of fading from nothing.
+    motion_ = new ModalMotion(card);
+    motion_->setInitial(isVisible() ? progress() : 0);
+    card->setGraphicsEffect(motion_);
+    connect(motion_, &ModalMotion::progressChanged, this, &ModalBackdrop::setProgress);
+    connect(motion_, &ModalMotion::finished, this, [this](bool open) {
+        if (open || !closing_)
+            return;
+        closing_ = false;
+        hide();
+        if (auto result = std::exchange(pending_, nullptr))
+            result();
+    });
     card_ = card;
     cardWidth_ = width;
     lettersOnly_ = false;
@@ -142,6 +168,12 @@ void Modal::display(QAbstractButton *focus) {
         child->ensurePolished();
     width_ = width();
     fitCard();
+    closing_ = false;
+    pending_ = nullptr;
+    if (!isVisible()) {
+        setProgress(0);
+        prepare(); // blur before showing so the fade starts on the first frame
+    }
     show();
     raise();
     (focus ? static_cast<QWidget *>(focus) : static_cast<QWidget *>(this))->setFocus();
@@ -153,11 +185,24 @@ void Modal::display(QAbstractButton *focus) {
         style()->polish(button);
     }
     fitCard();
+    motion_->animate(true);
+}
+
+void Modal::finish(std::function<void()> result) {
+    if (closing_)
+        return;
+    if (!isVisible()) {
+        result();
+        return;
+    }
+    closing_ = true;
+    pending_ = std::move(result);
+    card_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    motion_->animate(false);
 }
 
 void Modal::dismiss() {
-    hide();
-    emit dismissed();
+    finish([this] { emit dismissed(); });
 }
 
 void Modal::showMessage(const QString &title, const QString &body, const QStringList &buttons, int primaryIndex) {
@@ -172,8 +217,7 @@ void Modal::showMessage(const QString &title, const QString &body, const QString
     const auto row = addButtons(buttons, primaryIndex);
     for (int index = 0; index < row.size(); ++index) {
         connect(row[index], &QAbstractButton::clicked, this, [this, index] {
-            hide();
-            emit answered(index);
+            finish([this, index] { emit answered(index); });
         });
     }
     display(defaultButton_);
@@ -188,8 +232,7 @@ void Modal::showLetterPicker() {
         tile->setCheckable(false);
         tile->setFixedSize(44, 44);
         connect(tile, &QAbstractButton::clicked, this, [this, index] {
-            hide();
-            emit letterChosen(char('A' + index));
+            finish([this, index] { emit letterChosen(char('A' + index)); });
         });
         grid->addWidget(tile, index / 7, index % 7);
     }
@@ -238,8 +281,7 @@ void Modal::showExchange(const std::vector<char> &rack) {
             if (tile->isChecked())
                 chosen.push_back(tile->letter());
         }
-        hide();
-        emit exchangeChosen(chosen);
+        finish([this, chosen] { emit exchangeChosen(chosen); });
     });
     display(buttons.empty() ? nullptr : buttons.front());
 }
@@ -281,8 +323,7 @@ void Modal::showNewGame(int currentLevel, bool inProgress) {
         for (int index = 0; index < int(choices.size()); ++index)
             if (choices[index]->isChecked())
                 level = index;
-        hide();
-        emit newGameChosen(level);
+        finish([this, level] { emit newGameChosen(level); });
     });
     display(row[1]);
 }
@@ -351,11 +392,13 @@ void Modal::showRules() {
 }
 
 void Modal::keyPressEvent(QKeyEvent *event) {
-    if (event->key() == Qt::Key_Escape) {
+    if (closing_) {
+        // already fading out; swallow input so a second choice cannot fire
+    } else if (event->key() == Qt::Key_Escape) {
         dismiss();
     } else if (lettersOnly_ && event->key() >= Qt::Key_A && event->key() <= Qt::Key_Z) {
-        hide();
-        emit letterChosen(char('A' + event->key() - Qt::Key_A));
+        const char letter = char('A' + event->key() - Qt::Key_A);
+        finish([this, letter] { emit letterChosen(letter); });
     } else if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && defaultButton_
                && defaultButton_->isEnabled() && !qobject_cast<TileButton *>(focusWidget())) {
         defaultButton_->click();
